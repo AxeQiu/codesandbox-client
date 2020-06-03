@@ -67,8 +67,13 @@ export function convertEsModule(code: string) {
   let exportsDefined = false;
   // @ts-ignore
   program = walk(program, {
-    enter(node) {
-      if (node.type === n.VariableDeclarator) {
+    enter(node, parent) {
+      if (node.type === n.VariableDeclaration) {
+        // We don't rename exports vars in functions, only on root level
+        if (parent.type === n.BlockStatement && exportsDefined === false) {
+          this.skip();
+        }
+      } else if (node.type === n.VariableDeclarator) {
         const declNode = node as meriyah.ESTree.VariableDeclarator;
         if (
           declNode.id.type === n.Identifier &&
@@ -82,6 +87,9 @@ export function convertEsModule(code: string) {
           idNode.name = '__$csb_exports';
           this.replace(idNode);
         }
+      } else if (!exportsDefined && parent != null) {
+        // Skip, we don't need to go deeper now
+        this.skip();
       }
     },
   });
@@ -125,21 +133,23 @@ export function convertEsModule(code: string) {
         const varName = getVarName(`$csb__${basename(source.value, '.js')}`);
 
         program.body[i] = generateRequireStatement(varName, source.value);
-        i++;
+        if (statement.specifiers.length) {
+          i++;
 
-        statement.specifiers
-          .reverse()
-          .forEach((specifier: meriyah.ESTree.ExportSpecifier) => {
-            program.body.splice(
-              i,
-              0,
-              generateExportMemberStatement(
-                varName,
-                specifier.exported.name,
-                specifier.local.name
-              )
-            );
-          });
+          statement.specifiers
+            .reverse()
+            .forEach((specifier: meriyah.ESTree.ExportSpecifier) => {
+              program.body.splice(
+                i,
+                0,
+                generateExportMemberStatement(
+                  varName,
+                  specifier.exported.name,
+                  specifier.local.name
+                )
+              );
+            });
+        }
       } else if (statement.declaration) {
         // First remove the export statement
         program.body[i] = statement.declaration;
@@ -310,6 +320,8 @@ export function convertEsModule(code: string) {
             0,
             generateInteropRequireExpression(varName, localName)
           );
+
+          varsToRename[localName] = [localName, 'default'];
           importOffset++;
           return;
         }
@@ -395,7 +407,8 @@ export function convertEsModule(code: string) {
             varsToRename,
             ref.identifier.name
           ) &&
-          ref.resolved === null
+          ref.resolved === null &&
+          !ref.writeExpr
         ) {
           ref.identifier.name = varsToRename[ref.identifier.name].join('.');
         }

@@ -268,6 +268,44 @@ describe('convert-esmodule', () => {
     expect(convertEsModule(code)).toMatchSnapshot();
   });
 
+  it('exports that are not on the root scope are not renamed', () => {
+    const code = `
+    function a() {
+      var exports = 'blaat';
+    }
+    `;
+    expect(convertEsModule(code)).toMatchSnapshot();
+  });
+
+  it('renames exports that are already defined, even in block scope', () => {
+    const code = `
+    var exports = 'testtest';
+    function a() {
+      exports = 'blaat';
+    }
+    `;
+    expect(convertEsModule(code)).toMatchSnapshot();
+  });
+
+  it('does empty exports', () => {
+    const code = `
+    export {} from './column_sorting_draggable';
+    export { EuiDataGrid } from './data_grid';
+    export * from './data_grid_types';
+    `;
+    expect(convertEsModule(code)).toMatchSnapshot();
+  });
+
+  it('changes default imports inline', () => {
+    const code = `
+    import rgb from './rgb';
+
+    rgb.a;
+    `;
+
+    expect(convertEsModule(code)).toMatchSnapshot();
+  });
+
   it('keeps import order', () => {
     const code = `
     import '1';
